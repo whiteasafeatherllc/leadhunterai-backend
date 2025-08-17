@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 
-from scrapers.async_scrapers import fetch_leads
+from scrapers.async_scrapers import search_posts as reddit_search
 from scrapers.twitter_like import search_twitter, search_instagram, search_tiktok
 
 app = FastAPI(title="LeadHunterAI — Social Lead Finder (MVP)", version="0.2.0")
@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +48,7 @@ def search(keyword: str, platforms: Optional[str] = "twitter,reddit,instagram,ti
     # Reddit
     if "reddit" in platforms_list:
         try:
-            results = fetch_leads(keyword, max_results=max_results)
+            results = reddit_search(keyword, max_results=max_results)
             for r in results:
                 r["platform"] = "reddit"
                 all_results.append(r)
