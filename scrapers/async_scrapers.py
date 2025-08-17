@@ -67,7 +67,7 @@ async def fetch_leads(keyword):
     tasks = [
         fetch_reddit(keyword),
         fetch_duckduckgo(keyword),
-        fetch_twitter(keyword)
+       # fetch_twitter(keyword)
     ]
     results = await asyncio.gather(*tasks)
     # Flatten the list
