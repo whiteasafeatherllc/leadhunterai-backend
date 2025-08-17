@@ -1,24 +1,25 @@
-from typing import List
-from scrapers.async_scrapers import fetch_twitter, fetch_instagram, fetch_tiktok
 import asyncio
+from scrapers.async_scrapers import fetch_twitter, fetch_instagram, fetch_tiktok
 
-def search_twitter(keyword: str, max_results: int = 10) -> List[dict]:
-    async def wrapper():
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            return await fetch_twitter(session, keyword, max_results=max_results)
-    return asyncio.run(wrapper())
+# -----------------------------
+# Twitter
+# -----------------------------
+def search_twitter(keyword: str, max_results: int = 10):
+    """Sync wrapper for async Twitter scraper"""
+    return asyncio.run(fetch_twitter(keyword=keyword, max_results=max_results))
 
-def search_instagram(keyword: str, max_results: int = 10) -> List[dict]:
-    async def wrapper():
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            return await fetch_instagram(session, keyword, max_results=max_results)
-    return asyncio.run(wrapper())
 
-def search_tiktok(keyword: str, max_results: int = 10) -> List[dict]:
-    async def wrapper():
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            return await fetch_tiktok(session, keyword, max_results=max_results)
-    return asyncio.run(wrapper())
+# -----------------------------
+# Instagram
+# -----------------------------
+def search_instagram(keyword: str, max_results: int = 10):
+    """Sync wrapper for async Instagram scraper"""
+    return asyncio.run(fetch_instagram(keyword=keyword, max_results=max_results))
+
+
+# -----------------------------
+# TikTok
+# -----------------------------
+def search_tiktok(keyword: str, max_results: int = 10):
+    """Sync wrapper for async TikTok scraper"""
+    return asyncio.run(fetch_tiktok(keyword=keyword, max_results=max_results))
