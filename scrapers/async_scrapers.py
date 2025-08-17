@@ -94,4 +94,85 @@ async def fetch_instagram(session, keyword, max_results=10):
     results = []
     headers = {"User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)"}
     try:
-        async with session.get(url, headers=
+        async with session.get(url, headers=headers) as resp:
+            html = await resp.text()
+            soup = BeautifulSoup(html, "html.parser")
+            scripts = soup.find_all("script", type="text/javascript")
+            for script in scripts:
+                if "window._sharedData" in script.text:
+                    data = script.text.strip().replace("window._sharedData = ", "")[:-1]
+                    json_data = json.loads(data)
+                    edges = json_data["entry_data"]["TagPage"][0]["graphql"]["hashtag"]["edge_hashtag_to_media"]["edges"]
+                    for e in edges[:max_results]:
+                        node = e["node"]
+                        results.append({
+                            "platform": "instagram",
+                            "title": node.get("edge_media_to_caption", {}).get("edges", [{}])[0].get("node", {}).get("text", "")[:50],
+                            "snippet": node.get("edge_media_to_caption", {}).get("edges", [{}])[0].get("node", {}).get("text", ""),
+                            "url": f"https://www.instagram.com/p/{node.get('shortcode')}/"
+                        })
+    except Exception as e:
+        print("Instagram error:", e)
+    return results
+
+# -----------------------------
+# TikTok Scraper (Basic)
+# -----------------------------
+async def fetch_tiktok(session, keyword, max_results=10):
+    url = f"https://www.tiktok.com/tag/{keyword}"
+    results = []
+    headers = {"User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)"}
+    try:
+        async with session.get(url, headers=headers) as resp:
+            html = await resp.text()
+            soup = BeautifulSoup(html, "html.parser")
+            scripts = soup.find_all("script", type="text/javascript")
+            for script in scripts:
+                if "window['SIGI_STATE']" in script.text:
+                    data = script.text.strip().split("=", 1)[1].rstrip(";")
+                    json_data = json.loads(data)
+                    items = list(json_data.get("ItemModule", {}).values())[:max_results]
+                    for item in items:
+                        results.append({
+                            "platform": "tiktok",
+                            "title": item.get("desc", "")[:50],
+                            "snippet": item.get("desc", ""),
+                            "url": f"https://www.tiktok.com/@{item.get('author')}/video/{item.get('id')}"
+                        })
+    except Exception as e:
+        print("TikTok error:", e)
+    return results
+
+# -----------------------------
+# Master collector
+# -----------------------------
+async def fetch_leads(keyword, max_results=15):
+    async with aiohttp.ClientSession() as session:
+        reddit_results, ddg_results, twitter_results, insta_results, tiktok_results = await asyncio.gather(
+            fetch_reddit(session, keyword, max_results=max_results),
+            fetch_duckduckgo(session, keyword, max_results=max_results),
+            fetch_twitter(session, keyword, max_results=max_results),
+            fetch_instagram(session, keyword, max_results=max_results),
+            fetch_tiktok(session, keyword, max_results=max_results),
+        )
+        # Prioritize Reddit, fallback to DuckDuckGo
+        leads = reddit_results or ddg_results
+        # Combine all results
+        all_results = leads + twitter_results + insta_results + tiktok_results
+        # Deduplicate by URL
+        seen = set()
+        deduped = []
+        for item in all_results:
+            url = item.get("url")
+            if url and url not in seen:
+                seen.add(url)
+                deduped.append(item)
+                if len(deduped) >= max_results:
+                    break
+        return deduped
+
+# -----------------------------
+# Exported function
+# -----------------------------
+def search_posts(keyword, max_results=15):
+    return asyncio.run(fetch_leads(keyword, max_results=max_results))
