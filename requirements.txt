@@ -1,8 +1,9 @@
-fastapi
-uvicorn
-aiohttp
-httpx
-beautifulsoup4
-pydantic
-jinja2
-python-multipart
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+aiohttp==3.12.15
+httpx==0.28.1
+beautifulsoup4==4.13.4
+pydantic==2.11.7
+jinja2==3.1.6
+python-multipart==0.0.20
+snscrape==0.6.5
