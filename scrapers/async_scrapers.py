@@ -1,75 +1,64 @@
 import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
-import urllib.parse
 
-async def fetch_reddit(keyword):
-    url = f"https://www.reddit.com/search.json?q={urllib.parse.quote(keyword)}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    async with aiohttp.ClientSession() as session:
+# -----------------------------
+# DuckDuckGo Scraper
+# -----------------------------
+async def fetch_duckduckgo(session, keyword):
+    url = f"https://html.duckduckgo.com/html/?q={keyword}"
+    results = []
+    try:
+        async with session.get(url) as resp:
+            html = await resp.text()
+            soup = BeautifulSoup(html, "html.parser")
+            for result in soup.select(".result__body"):
+                title = result.select_one(".result__title")
+                snippet = result.select_one(".result__snippet")
+                link = result.select_one("a.result__a")
+                if title and link:
+                    results.append({
+                        "platform": "duckduckgo",
+                        "title": title.get_text(strip=True),
+                        "snippet": snippet.get_text(strip=True) if snippet else "",
+                        "url": link["href"]
+                    })
+    except Exception as e:
+        print("DuckDuckGo error:", e)
+    return results
+
+# -----------------------------
+# Reddit Scraper
+# -----------------------------
+async def fetch_reddit(session, keyword):
+    url = f"https://www.reddit.com/search.json?q={keyword}&limit=10"
+    results = []
+    headers = {"User-Agent": "LeadHunterAI/1.0"}
+    try:
         async with session.get(url, headers=headers) as resp:
-            if resp.status != 200:
-                return []
             data = await resp.json()
-            posts = data.get("data", {}).get("children", [])
-            results = []
-            for post in posts[:5]:  # Limit to 5 results
-                p = post["data"]
+            for child in data.get("data", {}).get("children", []):
+                post = child["data"]
                 results.append({
                     "platform": "reddit",
-                    "title": p.get("title", ""),
-                    "snippet": p.get("selftext", "")[:150],
-                    "url": f"https://reddit.com{p.get('permalink', '')}"
+                    "title": post.get("title"),
+                    "snippet": post.get("selftext")[:150] if post.get("selftext") else "",
+                    "url": f"https://reddit.com{post.get('permalink')}"
                 })
-            return results
+    except Exception as e:
+        print("Reddit error:", e)
+    return results
 
-async def fetch_duckduckgo(keyword):
-    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(keyword)}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            results = []
-            for a in soup.find_all("a", class_="result__a")[:5]:
-                parent = a.find_parent("div", class_="result")
-                snippet_tag = parent.find("a", class_="result__snippet") if parent else None
-                results.append({
-                    "platform": "duckduckgo",
-                    "title": a.get_text(),
-                    "snippet": snippet_tag.get_text()[:150] if snippet_tag else "",
-                    "url": a.get("href")
-                })
-            return results
-
-async def fetch_twitter(keyword):
-    url = f"https://twitter.com/search?q={urllib.parse.quote(keyword)}&f=live"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            results = []
-            tweets = soup.find_all("div", {"data-testid": "tweet"})[:5]
-            for t in tweets:
-                content = t.get_text(separator=" ", strip=True)
-                link_tag = t.find("a", href=True)
-                url = f"https://twitter.com{link_tag['href']}" if link_tag else ""
-                results.append({
-                    "platform": "twitter",
-                    "title": content[:100],
-                    "snippet": content[100:200] if len(content) > 100 else "",
-                    "url": url
-                })
-            return results
-
+# -----------------------------
+# Master collector
+# -----------------------------
 async def fetch_leads(keyword):
-    tasks = [
-        fetch_reddit(keyword),
-        fetch_duckduckgo(keyword),
-       # fetch_twitter(keyword)
-    ]
-    results = await asyncio.gather(*tasks)
-    # Flatten the list
-    flat_results = [item for sublist in results for item in sublist]
-    return flat_results
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            fetch_duckduckgo(session, keyword),
+            fetch_reddit(session, keyword),
+            # 👉 add your other scrapers here (twitter, fb, linkedin, etc.)
+        ]
+        results = await asyncio.gather(*tasks)
+        leads = [item for sublist in results for item in sublist]
+        return leads
