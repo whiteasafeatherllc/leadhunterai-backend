@@ -33,10 +33,15 @@ async def fetch_twitter(keyword: str):
                     for t in tweets[:5]:
                         link_tag = t.find_parent("a")
                         link = "https://nitter.net" + link_tag["href"] if link_tag else ""
-                        results.append({"platform": "Twitter", "text": t.get_text(strip=True), "link": link})
+                        results.append({
+                            "platform": "Twitter",
+                            "title": t.get_text(strip=True),
+                            "url": link,
+                            "snippet": t.get_text(strip=True)
+                        })
             except Exception as e:
-                results.append({"platform": "Twitter", "text": f"Error: {e}", "link": ""})
-    return results or [{"platform": "Twitter", "text": "No results", "link": ""}]
+                results.append({"platform": "Twitter", "title": f"Error: {e}", "url": "", "snippet": ""})
+    return results or [{"platform": "Twitter", "title": "No results", "url": "", "snippet": ""}]
 
 async def fetch_reddit(keyword: str):
     queries = expand_queries(keyword)
@@ -50,10 +55,15 @@ async def fetch_reddit(keyword: str):
                     soup = BeautifulSoup(html, "html.parser")
                     posts = soup.select("h3")
                     for p in posts[:5]:
-                        results.append({"platform": "Reddit", "text": p.get_text(strip=True), "link": url})
+                        results.append({
+                            "platform": "Reddit",
+                            "title": p.get_text(strip=True),
+                            "url": url,
+                            "snippet": p.get_text(strip=True)
+                        })
             except Exception as e:
-                results.append({"platform": "Reddit", "text": f"Error: {e}", "link": ""})
-    return results or [{"platform": "Reddit", "text": "No results", "link": ""}]
+                results.append({"platform": "Reddit", "title": f"Error: {e}", "url": "", "snippet": ""})
+    return results or [{"platform": "Reddit", "title": "No results", "url": "", "snippet": ""}]
 
 async def fetch_instagram(keyword: str):
     queries = expand_queries(keyword)
@@ -67,10 +77,15 @@ async def fetch_instagram(keyword: str):
                     soup = BeautifulSoup(html, "html.parser")
                     links = soup.select("a.result__a")
                     for l in links[:5]:
-                        results.append({"platform": "Instagram", "text": l.get_text(strip=True), "link": l["href"]})
+                        results.append({
+                            "platform": "Instagram",
+                            "title": l.get_text(strip=True),
+                            "url": l["href"],
+                            "snippet": l.get_text(strip=True)
+                        })
             except Exception as e:
-                results.append({"platform": "Instagram", "text": f"Error: {e}", "link": ""})
-    return results or [{"platform": "Instagram", "text": "No results", "link": ""}]
+                results.append({"platform": "Instagram", "title": f"Error: {e}", "url": "", "snippet": ""})
+    return results or [{"platform": "Instagram", "title": "No results", "url": "", "snippet": ""}]
 
 async def fetch_tiktok(keyword: str):
     queries = expand_queries(keyword)
@@ -84,7 +99,12 @@ async def fetch_tiktok(keyword: str):
                     soup = BeautifulSoup(html, "html.parser")
                     links = soup.select("a.result__a")
                     for l in links[:5]:
-                        results.append({"platform": "TikTok", "text": l.get_text(strip=True), "link": l["href"]})
+                        results.append({
+                            "platform": "TikTok",
+                            "title": l.get_text(strip=True),
+                            "url": l["href"],
+                            "snippet": l.get_text(strip=True)
+                        })
             except Exception as e:
-                results.append({"platform": "TikTok", "text": f"Error: {e}", "link": ""})
-    return results or [{"platform": "TikTok", "text": "No results", "link": ""}]
+                results.append({"platform": "TikTok", "title": f"Error: {e}", "url": "", "snippet": ""})
+    return results or [{"platform": "TikTok", "title": "No results", "url": "", "snippet": ""}]
