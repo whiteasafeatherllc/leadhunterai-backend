@@ -3,33 +3,30 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
-import asyncio
 
-from scrapers.async_scrapers import fetch_leads as reddit_search
+from scrapers.async_scrapers import search_posts as reddit_search
 from scrapers.twitter_like import search_twitter, search_instagram, search_tiktok
 
 app = FastAPI(title="LeadHunterAI — Social Lead Finder (MVP)", version="0.2.0")
 
 from fastapi.middleware.cors import CORSMiddleware
 
-# ✅ Enable CORS
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # restrict in production
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Serve static frontend files
+# Serve static frontend files
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 @app.get("/", response_class=HTMLResponse)
 def index():
     with open("static/index.html", "r", encoding="utf-8") as f:
         return f.read()
-
 
 # ---------------------------
 # SEARCH API
@@ -40,57 +37,53 @@ class SearchResponse(BaseModel):
     snippet: str
     url: str
 
-
 @app.get("/search", response_model=List[SearchResponse])
-async def search(keyword: str, platforms: Optional[str] = "twitter,reddit,instagram,tiktok", max_results: int = 15):
+def search(keyword: str, platforms: Optional[str] = "twitter,reddit,instagram,tiktok", max_results: int = 15):
     platforms_list = [p.strip().lower() for p in platforms.split(",") if p.strip()]
     all_results = []
 
-    tasks = []
-
-    # Reddit
     if "reddit" in platforms_list:
-        tasks.append(reddit_search(keyword, max_results=max_results))
-
-    # Twitter
-    if "twitter" in platforms_list:
-        tasks.append(search_twitter(keyword, max_results=max_results))
-
-    # Instagram
-    if "instagram" in platforms_list:
-        tasks.append(search_instagram(keyword, max_results=max_results))
-
-    # TikTok
-    if "tiktok" in platforms_list:
-        tasks.append(search_tiktok(keyword, max_results=max_results))
-
-    # Run all scrapers concurrently
-    try:
-        results_list = await asyncio.gather(*tasks, return_exceptions=True)
-        for platform_name, result_set in zip(platforms_list, results_list):
-            if isinstance(result_set, Exception):
-                print(f"{platform_name.capitalize()} fetch failed:", result_set)
-                continue
-            for r in result_set:
-                r["platform"] = platform_name
+        try:
+            results = reddit_search(keyword, max_results=max_results)
+            for r in results:
+                r["platform"] = r.get("platform", "reddit")
                 all_results.append(r)
-    except Exception as e:
-        print("Search error:", e)
+        except Exception as e:
+            print("Reddit fetch failed:", e)
 
-    # ✅ Deduplicate & trim
+    if "twitter" in platforms_list:
+        try:
+            results = search_twitter(keyword, max_results=max_results)
+            all_results.extend(results)
+        except Exception as e:
+            print("Twitter fetch failed:", e)
+
+    if "instagram" in platforms_list:
+        try:
+            results = search_instagram(keyword, max_results=max_results)
+            all_results.extend(results)
+        except Exception as e:
+            print("Instagram fetch failed:", e)
+
+    if "tiktok" in platforms_list:
+        try:
+            results = search_tiktok(keyword, max_results=max_results)
+            all_results.extend(results)
+        except Exception as e:
+            print("TikTok fetch failed:", e)
+
+    # Deduplicate by URL
     seen = set()
     deduped = []
     for item in all_results:
         url = item.get("url")
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        deduped.append(item)
-        if len(deduped) >= max_results:
-            break
+        if url and url not in seen:
+            seen.add(url)
+            deduped.append(item)
+            if len(deduped) >= max_results:
+                break
 
     return deduped
-
 
 # ---------------------------
 # MESSAGE GENERATOR
@@ -100,7 +93,6 @@ class MessageRequest(BaseModel):
     prospect_context: Optional[str] = ""
     tone: Optional[str] = "friendly"
     location: Optional[str] = ""
-
 
 @app.post("/generate_message")
 def generate_message(payload: MessageRequest):
