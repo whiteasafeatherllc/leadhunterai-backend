@@ -1,9 +1,11 @@
+# async_scrapers.py
 import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
+import json
 
 # -----------------------------
-# DuckDuckGo Scraper (Fallback)
+# DuckDuckGo Scraper (Fallback for Reddit)
 # -----------------------------
 async def fetch_duckduckgo(session, keyword, max_results=10):
     url = f"https://html.duckduckgo.com/html/?q=site:reddit.com {keyword}"
@@ -18,7 +20,7 @@ async def fetch_duckduckgo(session, keyword, max_results=10):
                 link = result.select_one("a.result__a")
                 if title and link:
                     results.append({
-                        "platform": "duckduckgo",
+                        "platform": "reddit",
                         "title": title.get_text(strip=True),
                         "snippet": snippet.get_text(strip=True) if snippet else "",
                         "url": link["href"]
@@ -60,20 +62,36 @@ async def fetch_reddit(session, keyword, max_results=10):
     return results
 
 # -----------------------------
-# Master collector
+# Twitter Scraper (Basic)
 # -----------------------------
-async def fetch_leads(keyword, max_results=15):
-    async with aiohttp.ClientSession() as session:
-        # Fetch from Reddit first, fallback to DuckDuckGo if empty
-        reddit_results, ddg_results = await asyncio.gather(
-            fetch_reddit(session, keyword, max_results=max_results),
-            fetch_duckduckgo(session, keyword, max_results=max_results),
-        )
-        leads = reddit_results or ddg_results
-        return leads
+async def fetch_twitter(session, keyword, max_results=10):
+    url = f"https://twitter.com/search?q={keyword}&f=live"
+    results = []
+    try:
+        async with session.get(url) as resp:
+            html = await resp.text()
+            soup = BeautifulSoup(html, "html.parser")
+            tweets = soup.select("div[data-testid='tweet']")[:max_results]
+            for t in tweets:
+                text = t.get_text(separator=" ", strip=True)
+                link_tag = t.select_one("a[href*='/status/']")
+                link = f"https://twitter.com{link_tag['href']}" if link_tag else ""
+                results.append({
+                    "platform": "twitter",
+                    "title": text[:50],
+                    "snippet": text,
+                    "url": link
+                })
+    except Exception as e:
+        print("Twitter error:", e)
+    return results
 
 # -----------------------------
-# Exported function
+# Instagram Scraper (Basic)
 # -----------------------------
-def search_posts(keyword, max_results=15):
-    return asyncio.run(fetch_leads(keyword, max_results=max_results))
+async def fetch_instagram(session, keyword, max_results=10):
+    url = f"https://www.instagram.com/explore/tags/{keyword}/"
+    results = []
+    headers = {"User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)"}
+    try:
+        async with session.get(url, headers=
