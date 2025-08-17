@@ -33,10 +33,7 @@ async def fetch_duckduckgo(session, keyword, max_results=10):
 async def fetch_reddit(session, keyword, max_results=10):
     url = f"https://www.reddit.com/search.json?q={keyword}&limit={max_results}"
     results = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)",
-        "Accept": "application/json",
-    }
+    headers = {"User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)", "Accept": "application/json"}
     try:
         async with session.get(url, headers=headers) as resp:
             if resp.status != 200:
@@ -60,7 +57,7 @@ async def fetch_reddit(session, keyword, max_results=10):
     return results
 
 # -----------------------------
-# Twitter/Instagram/TikTok Scrapers
+# Twitter / Instagram / TikTok Scrapers
 # -----------------------------
 async def fetch_twitter(session, keyword, max_results=10):
     url = f"https://nitter.net/search?f=tweets&q={keyword}"
