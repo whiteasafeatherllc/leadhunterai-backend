@@ -3,16 +3,16 @@ import asyncio
 from bs4 import BeautifulSoup
 
 # -----------------------------
-# DuckDuckGo Scraper
+# DuckDuckGo Scraper (Fallback)
 # -----------------------------
-async def fetch_duckduckgo(session, keyword):
-    url = f"https://html.duckduckgo.com/html/?q={keyword}"
+async def fetch_duckduckgo(session, keyword, max_results=10):
+    url = f"https://html.duckduckgo.com/html/?q=site:reddit.com {keyword}"
     results = []
     try:
         async with session.get(url) as resp:
             html = await resp.text()
             soup = BeautifulSoup(html, "html.parser")
-            for result in soup.select(".result__body"):
+            for result in soup.select(".result__body")[:max_results]:
                 title = result.select_one(".result__title")
                 snippet = result.select_one(".result__snippet")
                 link = result.select_one("a.result__a")
@@ -28,23 +28,33 @@ async def fetch_duckduckgo(session, keyword):
     return results
 
 # -----------------------------
-# Reddit Scraper
+# Reddit API Scraper
 # -----------------------------
-async def fetch_reddit(session, keyword):
-    url = f"https://www.reddit.com/search.json?q={keyword}&limit=10"
+async def fetch_reddit(session, keyword, max_results=10):
+    url = f"https://www.reddit.com/search.json?q={keyword}&limit={max_results}"
     results = []
-    headers = {"User-Agent": "LeadHunterAI/1.0"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)",
+        "Accept": "application/json",
+    }
     try:
         async with session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                print(f"Reddit returned status {resp.status}")
+                return results
             data = await resp.json()
             for child in data.get("data", {}).get("children", []):
-                post = child["data"]
+                post = child.get("data", {})
+                if not post:
+                    continue
                 results.append({
                     "platform": "reddit",
-                    "title": post.get("title"),
-                    "snippet": post.get("selftext")[:150] if post.get("selftext") else "",
-                    "url": f"https://reddit.com{post.get('permalink')}"
+                    "title": post.get("title", "(no title)"),
+                    "snippet": (post.get("selftext") or "")[:150],
+                    "url": f"https://reddit.com{post.get('permalink', '')}"
                 })
+                if len(results) >= max_results:
+                    break
     except Exception as e:
         print("Reddit error:", e)
     return results
@@ -52,13 +62,18 @@ async def fetch_reddit(session, keyword):
 # -----------------------------
 # Master collector
 # -----------------------------
-async def fetch_leads(keyword):
+async def fetch_leads(keyword, max_results=15):
     async with aiohttp.ClientSession() as session:
-        tasks = [
-            fetch_duckduckgo(session, keyword),
-            fetch_reddit(session, keyword),
-            # 👉 add your other scrapers here (twitter, fb, linkedin, etc.)
-        ]
-        results = await asyncio.gather(*tasks)
-        leads = [item for sublist in results for item in sublist]
+        # Fetch from Reddit first, fallback to DuckDuckGo if empty
+        reddit_results, ddg_results = await asyncio.gather(
+            fetch_reddit(session, keyword, max_results=max_results),
+            fetch_duckduckgo(session, keyword, max_results=max_results),
+        )
+        leads = reddit_results or ddg_results
         return leads
+
+# -----------------------------
+# Exported function
+# -----------------------------
+def search_posts(keyword, max_results=15):
+    return asyncio.run(fetch_leads(keyword, max_results=max_results))
