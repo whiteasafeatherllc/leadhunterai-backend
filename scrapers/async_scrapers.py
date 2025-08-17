@@ -1,140 +1,131 @@
 import aiohttp
-import asyncio
 from bs4 import BeautifulSoup
 
-# -----------------------------
-# DuckDuckGo Scraper (Fallback)
-# -----------------------------
-async def fetch_duckduckgo(session, keyword, max_results=10):
-    url = f"https://html.duckduckgo.com/html/?q=site:reddit.com {keyword}"
+# Common headers to look like a browser
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/116.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+# Expand keyword into multiple useful search phrases
+def expand_queries(keyword: str):
+    base = keyword.strip()
+    return [
+        base,
+        f"looking for a {base}",
+        f"need a {base}",
+        f"recommend a {base}",
+        f"who can do {base}",
+        f"help me with {base}",
+    ]
+
+
+# --------------------------
+# Twitter (via Nitter mirror)
+# --------------------------
+async def fetch_twitter(keyword: str):
+    queries = expand_queries(keyword)
     results = []
-    try:
-        async with session.get(url) as resp:
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            for result in soup.select(".result__body")[:max_results]:
-                title = result.select_one(".result__title")
-                snippet = result.select_one(".result__snippet")
-                link = result.select_one("a.result__a")
-                if title and link:
-                    results.append({
-                        "platform": "duckduckgo",
-                        "title": title.get_text(strip=True),
-                        "snippet": snippet.get_text(strip=True) if snippet else "",
-                        "url": link["href"]
-                    })
-    except Exception as e:
-        print("DuckDuckGo error:", e)
-    return results
 
-# -----------------------------
-# Reddit API Scraper
-# -----------------------------
-async def fetch_reddit(session, keyword, max_results=10):
-    url = f"https://www.reddit.com/search.json?q={keyword}&limit={max_results}"
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        for q in queries:
+            url = f"https://nitter.net/search?f=tweets&q={q}"
+            try:
+                async with session.get(url, timeout=10) as resp:
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    tweets = soup.select(".timeline-item .tweet-content")
+                    for t in tweets[:5]:
+                        results.append({
+                            "platform": "Twitter",
+                            "text": t.get_text(strip=True),
+                            "link": "https://nitter.net" + t.find_parent("a")["href"]
+                        })
+            except Exception as e:
+                results.append({"platform": "Twitter", "text": f"Error: {e}", "link": ""})
+
+    return results or [{"platform": "Twitter", "text": "No results", "link": ""}]
+
+
+# --------------------------
+# Reddit
+# --------------------------
+async def fetch_reddit(keyword: str):
+    queries = expand_queries(keyword)
     results = []
-    headers = {"User-Agent": "Mozilla/5.0 (LeadHunterAI Bot)", "Accept": "application/json"}
-    try:
-        async with session.get(url, headers=headers) as resp:
-            if resp.status != 200:
-                print(f"Reddit returned status {resp.status}")
-                return results
-            data = await resp.json()
-            for child in data.get("data", {}).get("children", []):
-                post = child.get("data", {})
-                if not post:
-                    continue
-                results.append({
-                    "platform": "reddit",
-                    "title": post.get("title", "(no title)"),
-                    "snippet": (post.get("selftext") or "")[:150],
-                    "url": f"https://reddit.com{post.get('permalink', '')}"
-                })
-                if len(results) >= max_results:
-                    break
-    except Exception as e:
-        print("Reddit error:", e)
-    return results
 
-# -----------------------------
-# Twitter / Instagram / TikTok Scrapers
-# -----------------------------
-async def fetch_twitter(session, keyword, max_results=10):
-    url = f"https://nitter.net/search?f=tweets&q={keyword}"
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        for q in queries:
+            url = f"https://www.reddit.com/search/?q={q}"
+            try:
+                async with session.get(url, timeout=10) as resp:
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    posts = soup.select("h3")
+                    for p in posts[:5]:
+                        results.append({
+                            "platform": "Reddit",
+                            "text": p.get_text(strip=True),
+                            "link": url
+                        })
+            except Exception as e:
+                results.append({"platform": "Reddit", "text": f"Error: {e}", "link": ""})
+
+    return results or [{"platform": "Reddit", "text": "No results", "link": ""}]
+
+
+# --------------------------
+# Instagram (via DuckDuckGo proxy search)
+# --------------------------
+async def fetch_instagram(keyword: str):
+    queries = expand_queries(keyword)
     results = []
-    try:
-        async with session.get(url) as resp:
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            for tweet in soup.select(".timeline-item")[:max_results]:
-                content = tweet.select_one(".tweet-content")
-                link = tweet.select_one("a.timeline-link")
-                if content and link:
-                    results.append({
-                        "platform": "twitter",
-                        "title": content.get_text(strip=True),
-                        "snippet": content.get_text(strip=True),
-                        "url": "https://nitter.net" + link["href"]
-                    })
-    except Exception as e:
-        print("Twitter fetch error:", e)
-    return results
 
-async def fetch_instagram(session, keyword, max_results=10):
-    url = f"https://www.instagram.com/web/search/topsearch/?context=user&query={keyword}"
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        for q in queries:
+            url = f"https://duckduckgo.com/html/?q=site:instagram.com {q}"
+            try:
+                async with session.get(url, timeout=10) as resp:
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    links = soup.select("a.result__a")
+                    for l in links[:5]:
+                        results.append({
+                            "platform": "Instagram",
+                            "text": l.get_text(strip=True),
+                            "link": l["href"]
+                        })
+            except Exception as e:
+                results.append({"platform": "Instagram", "text": f"Error: {e}", "link": ""})
+
+    return results or [{"platform": "Instagram", "text": "No results", "link": ""}]
+
+
+# --------------------------
+# TikTok (via DuckDuckGo proxy search)
+# --------------------------
+async def fetch_tiktok(keyword: str):
+    queries = expand_queries(keyword)
     results = []
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        async with session.get(url, headers=headers) as resp:
-            data = await resp.json()
-            for user in data.get("users", [])[:max_results]:
-                username = user.get("user", {}).get("username", "")
-                if username:
-                    results.append({
-                        "platform": "instagram",
-                        "title": username,
-                        "snippet": f"Instagram user {username}",
-                        "url": f"https://instagram.com/{username}"
-                    })
-    except Exception as e:
-        print("Instagram fetch error:", e)
-    return results
 
-async def fetch_tiktok(session, keyword, max_results=10):
-    url = f"https://www.tiktok.com/tag/{keyword}"
-    results = []
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        async with session.get(url, headers=headers) as resp:
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            for post in soup.select("a")[:max_results]:
-                href = post.get("href")
-                if href and "video" in href:
-                    results.append({
-                        "platform": "tiktok",
-                        "title": "TikTok post",
-                        "snippet": "TikTok content",
-                        "url": f"https://www.tiktok.com{href}"
-                    })
-    except Exception as e:
-        print("TikTok fetch error:", e)
-    return results
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        for q in queries:
+            url = f"https://duckduckgo.com/html/?q=site:tiktok.com {q}"
+            try:
+                async with session.get(url, timeout=10) as resp:
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    links = soup.select("a.result__a")
+                    for l in links[:5]:
+                        results.append({
+                            "platform": "TikTok",
+                            "text": l.get_text(strip=True),
+                            "link": l["href"]
+                        })
+            except Exception as e:
+                results.append({"platform": "TikTok", "text": f"Error: {e}", "link": ""})
 
-# -----------------------------
-# Master collector
-# -----------------------------
-async def fetch_leads(keyword, max_results=15):
-    async with aiohttp.ClientSession() as session:
-        reddit_results, ddg_results = await asyncio.gather(
-            fetch_reddit(session, keyword, max_results=max_results),
-            fetch_duckduckgo(session, keyword, max_results=max_results),
-        )
-        leads = reddit_results or ddg_results
-        return leads
-
-# -----------------------------
-# Exported synchronous function
-# -----------------------------
-def search_posts(keyword, max_results=15):
-    return asyncio.run(fetch_leads(keyword, max_results=max_results))
+    return results or [{"platform": "TikTok", "text": "No results", "link": ""}]
