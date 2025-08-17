@@ -1,46 +1,31 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from async_scrapers import fetch_twitter, fetch_reddit, fetch_instagram, fetch_tiktok
 import asyncio
 
-from scrapers.async_scrapers import fetch_twitter, fetch_reddit, fetch_instagram, fetch_tiktok
-
-app = FastAPI(title="LeadHunterAI API")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-async def run_all_scrapers(keyword: str, platforms: list):
+@app.get("/search")
+async def search(keyword: str = Query(...), platforms: str = Query("twitter,reddit,instagram,tiktok")):
     tasks = []
-    results = []
+    platform_list = [p.strip().lower() for p in platforms.split(",")]
 
-    if "twitter" in platforms:
+    if "twitter" in platform_list:
         tasks.append(fetch_twitter(keyword))
-    if "reddit" in platforms:
+    if "reddit" in platform_list:
         tasks.append(fetch_reddit(keyword))
-    if "instagram" in platforms:
+    if "instagram" in platform_list:
         tasks.append(fetch_instagram(keyword))
-    if "tiktok" in platforms:
+    if "tiktok" in platform_list:
         tasks.append(fetch_tiktok(keyword))
 
-    if tasks:
-        completed = await asyncio.gather(*tasks)
-        for res in completed:
-            results.extend(res)
-
-    return results or [{"platform": "None", "text": "No results", "link": ""}]
-
-@app.post("/search")
-async def search(keyword: str = Form(...), platforms: str = Form(...)):
-    platform_list = [p.strip().lower() for p in platforms.split(",") if p.strip()]
-    results = await run_all_scrapers(keyword, platform_list)
-    return JSONResponse(content={"results": results})
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
+    results = await asyncio.gather(*tasks)
+    flat_results = [item for sublist in results for item in sublist]
+    return flat_results
