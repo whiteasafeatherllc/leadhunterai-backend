@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
+import asyncio
 
 from scrapers.async_scrapers import fetch_leads as reddit_search
 from scrapers.twitter_like import search_twitter, search_instagram, search_tiktok
@@ -11,10 +12,10 @@ app = FastAPI(title="LeadHunterAI — Social Lead Finder (MVP)", version="0.2.0"
 
 from fastapi.middleware.cors import CORSMiddleware
 
-# ✅ Enable CORS (important for frontend to talk to backend)
+# ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # in production, restrict to your domain
+    allow_origins=["*"],  # restrict in production
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,49 +42,40 @@ class SearchResponse(BaseModel):
 
 
 @app.get("/search", response_model=List[SearchResponse])
-def search(keyword: str, platforms: Optional[str] = "twitter,reddit,instagram,tiktok", max_results: int = 15):
+async def search(keyword: str, platforms: Optional[str] = "twitter,reddit,instagram,tiktok", max_results: int = 15):
     platforms_list = [p.strip().lower() for p in platforms.split(",") if p.strip()]
     all_results = []
 
+    tasks = []
+
     # Reddit
     if "reddit" in platforms_list:
-        try:
-            results = reddit_search(keyword, max_results=max_results)
-            for r in results:
-                r["platform"] = "reddit"
-                all_results.append(r)
-        except Exception as e:
-            print("Reddit fetch failed:", e)
+        tasks.append(reddit_search(keyword, max_results=max_results))
 
     # Twitter
     if "twitter" in platforms_list:
-        try:
-            results = search_twitter(keyword, max_results=max_results)
-            for r in results:
-                r["platform"] = "twitter"
-                all_results.append(r)
-        except Exception as e:
-            print("Twitter fetch failed:", e)
+        tasks.append(search_twitter(keyword, max_results=max_results))
 
     # Instagram
     if "instagram" in platforms_list:
-        try:
-            results = search_instagram(keyword, max_results=max_results)
-            for r in results:
-                r["platform"] = "instagram"
-                all_results.append(r)
-        except Exception as e:
-            print("Instagram fetch failed:", e)
+        tasks.append(search_instagram(keyword, max_results=max_results))
 
     # TikTok
     if "tiktok" in platforms_list:
-        try:
-            results = search_tiktok(keyword, max_results=max_results)
-            for r in results:
-                r["platform"] = "tiktok"
+        tasks.append(search_tiktok(keyword, max_results=max_results))
+
+    # Run all scrapers concurrently
+    try:
+        results_list = await asyncio.gather(*tasks, return_exceptions=True)
+        for platform_name, result_set in zip(platforms_list, results_list):
+            if isinstance(result_set, Exception):
+                print(f"{platform_name.capitalize()} fetch failed:", result_set)
+                continue
+            for r in result_set:
+                r["platform"] = platform_name
                 all_results.append(r)
-        except Exception as e:
-            print("TikTok fetch failed:", e)
+    except Exception as e:
+        print("Search error:", e)
 
     # ✅ Deduplicate & trim
     seen = set()
